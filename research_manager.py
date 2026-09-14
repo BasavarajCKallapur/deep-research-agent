@@ -3,20 +3,27 @@ from search_agent import search_agent
 from planner_agent import planner_agent, WebSearchItem, WebSearchPlan
 from writer_agent import writer_agent, ReportData
 from email_agent import email_agent
+from clarifier_agent import clarifier_agent, ClarificationQuestions
 import asyncio
 
 class ResearchManager:
 
-    async def run(self, query: str):
+    async def get_clarifications(self, query: str) -> ClarificationQuestions:
+        """ Ask the clarifier agent for 3 questions specific to this query """
+        result = await Runner.run(clarifier_agent, f"Query: {query}")
+        return result.final_output
+
+    async def run(self, query: str, answers: list[str] | None = None):
         """ Run the deep research process, yielding the status updates and the final report"""
         trace_id = gen_trace_id()
         with trace("Research trace", trace_id=trace_id):
             yield f"Starting research. Trace: https://platform.openai.com/traces/trace?trace_id={trace_id}"
-            search_plan = await self.plan_searches(query)
+            enriched_query = query if not answers else f"{query}\nClarifications: {answers}"
+            search_plan = await self.plan_searches(enriched_query)
             yield f"Searches planned, starting {len(search_plan.searches)} searches..."     
             search_results = await self.perform_searches(search_plan)
             yield "Searches complete, writing report..."
-            report = await self.write_report(query, search_results)
+            report = await self.write_report(enriched_query, search_results)
             yield "Report written, sending email..."
             await self.send_email(report)
             yield "Email sent, research complete"
